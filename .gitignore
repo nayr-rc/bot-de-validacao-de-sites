@@ -1,4 +1,7 @@
 token.json
+config.json
 state.json
+data.db
 *.log
+dist/
 node_modules/

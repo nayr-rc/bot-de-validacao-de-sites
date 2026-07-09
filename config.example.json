@@ -1,0 +1,18 @@
+{
+  "telegram": {
+    "token": "SEU_TOKEN_AQUI",
+    "chatId": "SEU_CHAT_ID"
+  },
+  "sites": [
+    {
+      "url": "https://ufrb.edu.br",
+      "name": "UFRB"
+    },
+    {
+      "url": "https://www.ufrb.edu.br",
+      "name": "UFRB WWW"
+    }
+  ],
+  "interval": 300000,
+  "timeout": 10000
+}

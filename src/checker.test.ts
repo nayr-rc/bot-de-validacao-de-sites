@@ -1,0 +1,98 @@
+import { describe, it, expect, vi, afterAll } from 'vitest';
+import { checkSite, checkAllSites } from './checker.js';
+import type { SiteConfig } from './types.js';
+
+const originalFetch = globalThis.fetch;
+
+function mockFetch(response: Partial<Response>, error?: string) {
+  if (error) {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error(error));
+  } else {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('UFRB - Universidade Federal do Recôncavo da Bahia'),
+      ...response,
+    });
+  }
+}
+
+function restoreFetch() {
+  globalThis.fetch = originalFetch;
+}
+
+describe('checkSite', () => {
+  const site: SiteConfig = { url: 'https://ufrb.edu.br', name: 'UFRB' };
+  const siteId = 0;
+
+  it('retorna up quando o site responde 200', async () => {
+    mockFetch({ ok: true, status: 200 });
+    const result = await checkSite(site, siteId, 5000);
+    expect(result.status).toBe('up');
+    expect(result.statusCode).toBe(200);
+    expect(result.error).toBeNull();
+    expect(result.url).toBe('https://ufrb.edu.br');
+    expect(result.responseTimeMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('retorna down quando o site responde 500', async () => {
+    mockFetch({ ok: false, status: 500 });
+    const result = await checkSite(site, siteId, 5000);
+    expect(result.status).toBe('down');
+    expect(result.statusCode).toBe(500);
+    expect(result.error).toContain('HTTP 500');
+  });
+
+  it('retorna down quando a requisição falha', async () => {
+    mockFetch({}, 'network error');
+    const result = await checkSite(site, siteId, 5000);
+    expect(result.status).toBe('down');
+    expect(result.error).toContain('network error');
+    expect(result.statusCode).toBeNull();
+  });
+
+  it('retorna down quando conteúdo esperado não é encontrado', async () => {
+    const siteWithContent: SiteConfig = {
+      url: 'https://ufrb.edu.br',
+      name: 'UFRB',
+      expectedContent: 'PalavraInexistenteXYZ',
+    };
+    mockFetch({ ok: true, status: 200 });
+    const result = await checkSite(siteWithContent, siteId, 5000);
+    expect(result.status).toBe('down');
+    expect(result.error).toContain('PalavraInexistenteXYZ');
+  });
+
+  it('retorna up quando conteúdo esperado é encontrado', async () => {
+    const siteWithContent: SiteConfig = {
+      url: 'https://ufrb.edu.br',
+      name: 'UFRB',
+      expectedContent: 'UFRB',
+    };
+    mockFetch({ ok: true, status: 200 });
+    const result = await checkSite(siteWithContent, siteId, 5000);
+    expect(result.status).toBe('up');
+  });
+
+  afterAll(() => {
+    restoreFetch();
+  });
+});
+
+describe('checkAllSites', () => {
+  it('checa múltiplos sites em paralelo', async () => {
+    mockFetch({ ok: true, status: 200 });
+    const sites: SiteConfig[] = [
+      { url: 'https://site1.com', name: 'Site 1' },
+      { url: 'https://site2.com', name: 'Site 2' },
+    ];
+    const results = await checkAllSites(sites, 5000);
+    expect(results).toHaveLength(2);
+    expect(results[0].status).toBe('up');
+    expect(results[1].status).toBe('up');
+  });
+
+  afterAll(() => {
+    restoreFetch();
+  });
+});

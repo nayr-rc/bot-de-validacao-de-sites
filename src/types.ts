@@ -1,0 +1,48 @@
+export interface SiteConfig {
+  url: string;
+  name: string;
+  expectedContent?: string;
+}
+
+export interface TelegramConfig {
+  token: string;
+  chatId: string;
+}
+
+export interface AppConfig {
+  telegram: TelegramConfig;
+  sites: SiteConfig[];
+  interval: number;
+  timeout: number;
+}
+
+export interface CheckResult {
+  siteId: number;
+  url: string;
+  status: 'up' | 'down';
+  statusCode: number | null;
+  responseTimeMs: number | null;
+  error: string | null;
+  checkedAt: string;
+}
+
+export interface UptimeStats {
+  period: string;
+  uptimePercent: number;
+  totalChecks: number;
+  upChecks: number;
+  downChecks: number;
+  avgResponseTimeMs: number | null;
+  totalDowntimeMs: number;
+}
+
+export interface AlertData {
+  type: 'up' | 'down';
+  message: string;
+  sentAt: string;
+}
+
+export interface SiteState {
+  wasDown: boolean;
+  lastCheckedAt: string | null;
+}
