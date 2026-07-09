@@ -19,6 +19,8 @@ function parseEnvSites(raw: string): SiteConfig[] {
     timeout: site.timeout,
     method: site.method,
     headers: site.headers,
+    maintenance: site.maintenance,
+    responseTimeThresholdMs: site.responseTimeThresholdMs,
   }));
 }
 
@@ -41,6 +43,9 @@ function parseEnvFile(): Partial<AppConfig> | null {
 
   return {
     telegram: { token, chatId },
+    notifications: values.get('NOTIFICATIONS')
+      ? JSON.parse(values.get('NOTIFICATIONS') as string)
+      : DEFAULTS.notifications,
     sites: values.get('SITES')
       ? parseEnvSites(values.get('SITES') as string)
       : DEFAULTS.sites,
@@ -62,6 +67,29 @@ function validateConfig(config: Partial<AppConfig>): AppConfig {
   if (!config.telegram?.token || !config.telegram?.chatId) {
     throw new Error('config.json: telegram.token e telegram.chatId são obrigatórios');
   }
+
+  const notifications = config.notifications ?? DEFAULTS.notifications;
+  notifications.forEach((notification, index) => {
+    if (!notification?.type) {
+      throw new Error(`config.json: notifications[${index}].type é obrigatório`);
+    }
+    if (
+      notification.type === 'webhook' &&
+      (!notification.webhookUrl || !isValidUrl(notification.webhookUrl))
+    ) {
+      throw new Error(
+        `config.json: notifications[${index}].webhookUrl deve ser uma URL válida`,
+      );
+    }
+    if (
+      notification.type === 'discord' &&
+      (!notification.discordWebhookUrl || !isValidUrl(notification.discordWebhookUrl))
+    ) {
+      throw new Error(
+        `config.json: notifications[${index}].discordWebhookUrl deve ser uma URL válida`,
+      );
+    }
+  });
   if (!Array.isArray(config.sites) || config.sites.length === 0) {
     throw new Error('config.json: sites é obrigatório');
   }
@@ -83,6 +111,18 @@ function validateConfig(config: Partial<AppConfig>): AppConfig {
     if (!site?.url || typeof site.url !== 'string' || !isValidUrl(site.url)) {
       throw new Error(`config.json: sites[${index}].url deve ser uma URL válida`);
     }
+    if (site.maintenance != null && typeof site.maintenance !== 'boolean') {
+      throw new Error(`config.json: sites[${index}].maintenance deve ser booleano`);
+    }
+    if (
+      site.responseTimeThresholdMs != null &&
+      (!Number.isInteger(site.responseTimeThresholdMs) ||
+        site.responseTimeThresholdMs <= 0)
+    ) {
+      throw new Error(
+        `config.json: sites[${index}].responseTimeThresholdMs deve ser um inteiro positivo`,
+      );
+    }
   });
 
   return {
@@ -90,10 +130,13 @@ function validateConfig(config: Partial<AppConfig>): AppConfig {
       token: config.telegram.token,
       chatId: config.telegram.chatId,
     },
+    notifications,
     sites: config.sites.map((site) => ({
       url: site.url,
       name: site.name,
       expectedContent: site.expectedContent,
+      maintenance: site.maintenance,
+      responseTimeThresholdMs: site.responseTimeThresholdMs,
     })),
     interval,
     timeout,
@@ -110,12 +153,14 @@ const DEFAULTS = {
     { url: 'https://ufrb.edu.br', name: 'UFRB' },
     { url: 'https://www.ufrb.edu.br', name: 'UFRB WWW' },
   ] as SiteConfig[],
+  notifications: [{ type: 'telegram' as const }],
 };
 
 function migrateFromTokenFile(): AppConfig {
   const { token, chatId } = JSON.parse(readFileSync(OLD_TOKEN_PATH, 'utf-8'));
   const config: AppConfig = {
     telegram: { token, chatId },
+    notifications: DEFAULTS.notifications,
     sites: DEFAULTS.sites,
     interval: DEFAULTS.interval,
     timeout: DEFAULTS.timeout,
@@ -151,6 +196,7 @@ export function loadConfig(): AppConfig {
   if (envToken && envChatId) {
     return validateConfig({
       telegram: { token: envToken, chatId: envChatId },
+      notifications: DEFAULTS.notifications,
       sites: envSites ? parseEnvSites(envSites) : DEFAULTS.sites,
       interval: envInterval ? Number(envInterval) : DEFAULTS.interval,
       timeout: envTimeout ? Number(envTimeout) : DEFAULTS.timeout,

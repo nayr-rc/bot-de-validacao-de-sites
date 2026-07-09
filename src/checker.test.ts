@@ -74,6 +74,38 @@ describe('checkSite', () => {
     expect(result.status).toBe('up');
   });
 
+  it('marca como degradado quando o tempo de resposta ultrapassa o limite', async () => {
+    const siteWithThreshold: SiteConfig = {
+      url: 'https://ufrb.edu.br',
+      name: 'UFRB',
+      responseTimeThresholdMs: 100,
+    };
+    mockFetch({ ok: true, status: 200 });
+    const perfSpy = vi
+      .spyOn(performance, 'now')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(150);
+
+    const result = await checkSite(siteWithThreshold, siteId, 5000);
+
+    expect(result.status).toBe('degraded');
+    expect(result.error).toContain('Tempo de resposta');
+    perfSpy.mockRestore();
+  });
+
+  it('ignora a checagem quando o site está em manutenção', async () => {
+    const maintenanceSite: SiteConfig = {
+      url: 'https://ufrb.edu.br',
+      name: 'UFRB',
+      maintenance: true,
+    };
+
+    const result = await checkSite(maintenanceSite, siteId, 5000);
+
+    expect(result.status).toBe('up');
+    expect(result.error).toContain('manutenção');
+  });
+
   it('usa a segunda URL quando a primeira falha', async () => {
     const siteWithFallback: SiteConfig = {
       url: 'https://primary.example.com',

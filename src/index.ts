@@ -46,10 +46,13 @@ function logToFile(text: string): void {
 async function handleResults(results: CheckResult[]): Promise<void> {
   const anyUp = results.some((r) => r.status === 'up');
   const allDown = results.every((r) => r.status === 'down');
+  const anyOperational = results.some(
+    (r) => r.status === 'up' || r.status === 'degraded',
+  );
 
   results.forEach((r) => insertCheck(r));
 
-  if (!firstRun && shouldSendAlert(state, results)) {
+  if (!firstRun && shouldSendAlert(state, results, config.sites)) {
     if (anyUp && state.wasDown) {
       const msg = buildUpMessage(results);
       const alert = await sendTelegram(config, msg);
@@ -63,7 +66,7 @@ async function handleResults(results: CheckResult[]): Promise<void> {
     }
   }
 
-  state.wasDown = !anyUp;
+  state.wasDown = !anyOperational;
   state.lastCheckedAt = new Date().toISOString();
   saveState(state);
   firstRun = false;

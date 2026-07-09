@@ -9,7 +9,8 @@ const __dirname = dirname(__filename);
 
 const DB_PATH = join(__dirname, '..', 'data.db');
 
-let db: SqlJsDatabase;
+let db: SqlJsDatabase | undefined;
+let storageReady = false;
 
 export async function initStorage(): Promise<void> {
   const SQL = await initSqlJs();
@@ -51,14 +52,17 @@ export async function initStorage(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_alerts_sent_at ON alerts(sent_at)
   `);
 
+  storageReady = true;
   save();
 }
 
 export function save(): void {
+  if (!db) return;
   writeFileSync(DB_PATH, Buffer.from(db.export()));
 }
 
 export function insertCheck(result: CheckResult): void {
+  if (!db) return;
   db.run(
     `INSERT INTO checks (site_id, url, status, status_code, response_time_ms, error, checked_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -76,6 +80,7 @@ export function insertCheck(result: CheckResult): void {
 }
 
 export function insertAlert(alert: AlertData): void {
+  if (!db) return;
   db.run(`INSERT INTO alerts (type, message, sent_at) VALUES (?, ?, ?)`, [
     alert.type,
     alert.message,
@@ -85,6 +90,7 @@ export function insertAlert(alert: AlertData): void {
 }
 
 export function getRecentChecks(hours = 24): CheckResult[] {
+  if (!db || !storageReady) return [];
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   const stmt = db.exec(
     `SELECT site_id, url, status, status_code, response_time_ms, error, checked_at
@@ -112,6 +118,9 @@ export function getUptimeStats(hours = 24): {
   downChecks: number;
   avgResponseTimeMs: number | null;
 } {
+  if (!db || !storageReady) {
+    return { totalChecks: 0, upChecks: 0, downChecks: 0, avgResponseTimeMs: null };
+  }
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
   const stmt = db.exec(
@@ -147,4 +156,6 @@ export function closeDb(): void {
     save();
     db.close();
   }
+  db = undefined;
+  storageReady = false;
 }

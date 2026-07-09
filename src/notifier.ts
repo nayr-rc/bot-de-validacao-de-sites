@@ -1,5 +1,5 @@
 import { createLogger } from './logger.js';
-import type { CheckResult, AppConfig, AlertData } from './types.js';
+import type { CheckResult, AppConfig, AlertData, NotificationConfig } from './types.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
@@ -20,9 +20,13 @@ function buildDetails(results: CheckResult[]): string {
 export function shouldSendAlert(
   previousState: { wasDown: boolean },
   results: CheckResult[],
+  sites: Array<{ maintenance?: boolean }> = [],
 ): boolean {
-  const anyUp = results.some((r) => r.status === 'up');
-  const allDown = results.every((r) => r.status === 'down');
+  const relevantResults = results.filter((_, index) => !sites[index]?.maintenance);
+  if (relevantResults.length === 0) return false;
+
+  const anyUp = relevantResults.some((r) => r.status === 'up');
+  const allDown = relevantResults.every((r) => r.status === 'down');
 
   if (previousState.wasDown && anyUp) return true;
   if (!previousState.wasDown && allDown) return true;
@@ -70,45 +74,115 @@ function makeProgressBar(percent: number, size = 10): string {
   return '█'.repeat(filled) + '░'.repeat(empty);
 }
 
-export async function sendTelegram(config: AppConfig, text: string): Promise<AlertData> {
-  const url = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
-
+async function sendWithRetry(
+  url: string,
+  payload: unknown,
+  headers: Record<string, string>,
+): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: config.telegram.chatId,
-          text,
-          parse_mode: 'Markdown',
-        }),
+        headers,
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
       clearTimeout(timer);
 
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(`Telegram API: HTTP ${res.status} — ${body}`);
+        throw new Error(`HTTP ${res.status} — ${body}`);
       }
-
-      const sentAt = new Date().toISOString();
-      return { type: text.includes('fora do ar') ? 'down' : 'up', message: text, sentAt };
+      return;
     } catch (err) {
       if (attempt === MAX_RETRIES) {
-        const message = err instanceof Error ? err.message : String(err);
-        logger.error(`Falha após ${MAX_RETRIES} tentativas`, { error: message });
-        return { type: 'down', message: text, sentAt: new Date().toISOString() };
+        throw err;
       }
-      logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} falhou. Reenvando...`, {
-        attempt,
-        maxRetries: MAX_RETRIES,
-      });
       await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
     }
   }
+}
 
-  throw new Error('Unreachable');
+async function sendTelegramNotification(config: AppConfig, text: string): Promise<void> {
+  const url = `https://api.telegram.org/bot${config.telegram.token}/sendMessage`;
+  await sendWithRetry(
+    url,
+    {
+      chat_id: config.telegram.chatId,
+      text,
+      parse_mode: 'Markdown',
+    },
+    { 'Content-Type': 'application/json' },
+  );
+}
+
+async function sendWebhookNotification(
+  notification: NotificationConfig,
+  text: string,
+): Promise<void> {
+  if (!notification.webhookUrl) return;
+  await sendWithRetry(
+    notification.webhookUrl,
+    { text },
+    { 'Content-Type': 'application/json' },
+  );
+}
+
+async function sendDiscordNotification(
+  notification: NotificationConfig,
+  text: string,
+): Promise<void> {
+  if (!notification.discordWebhookUrl) return;
+  await sendWithRetry(
+    notification.discordWebhookUrl,
+    { content: text },
+    { 'Content-Type': 'application/json' },
+  );
+}
+
+export async function sendNotifications(
+  config: AppConfig,
+  text: string,
+): Promise<AlertData[]> {
+  const results: AlertData[] = [];
+  const notifications = config.notifications ?? [{ type: 'telegram' }];
+
+  for (const notification of notifications) {
+    try {
+      if (notification.type === 'telegram') {
+        await sendTelegramNotification(config, text);
+      } else if (notification.type === 'webhook') {
+        await sendWebhookNotification(notification, text);
+      } else if (notification.type === 'discord') {
+        await sendDiscordNotification(notification, text);
+      }
+
+      results.push({
+        type: text.includes('fora do ar') ? 'down' : 'up',
+        message: text,
+        sentAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Falha ao enviar notificação', {
+        notificationType: notification.type,
+        error: message,
+      });
+    }
+  }
+
+  return results;
+}
+
+export async function sendTelegram(config: AppConfig, text: string): Promise<AlertData> {
+  const result = await sendNotifications(config, text);
+  return (
+    result[0] ?? {
+      type: text.includes('fora do ar') ? 'down' : 'up',
+      message: text,
+      sentAt: new Date().toISOString(),
+    }
+  );
 }

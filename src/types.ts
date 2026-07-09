@@ -7,6 +7,8 @@ export interface SiteConfig {
   timeout?: number;
   method?: 'GET' | 'HEAD';
   headers?: Record<string, string>;
+  maintenance?: boolean;
+  responseTimeThresholdMs?: number;
 }
 
 export interface TelegramConfig {
@@ -14,8 +16,15 @@ export interface TelegramConfig {
   chatId: string;
 }
 
+export interface NotificationConfig {
+  type: 'telegram' | 'webhook' | 'discord';
+  webhookUrl?: string;
+  discordWebhookUrl?: string;
+}
+
 export interface AppConfig {
   telegram: TelegramConfig;
+  notifications?: NotificationConfig[];
   sites: SiteConfig[];
   interval: number;
   timeout: number;
@@ -24,7 +33,7 @@ export interface AppConfig {
 export interface CheckResult {
   siteId: number;
   url: string;
-  status: 'up' | 'down';
+  status: 'up' | 'down' | 'degraded';
   statusCode: number | null;
   responseTimeMs: number | null;
   error: string | null;

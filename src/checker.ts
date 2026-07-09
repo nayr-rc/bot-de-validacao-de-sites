@@ -30,6 +30,18 @@ export async function checkSite(
   const checkedAt = new Date().toISOString();
   const urls = [site.url, ...(site.urls ?? [])];
 
+  if (site.maintenance) {
+    return {
+      siteId,
+      url: site.url,
+      status: 'up',
+      statusCode: null,
+      responseTimeMs: 0,
+      error: 'Site em manutenção',
+      checkedAt,
+    };
+  }
+
   for (const url of urls) {
     try {
       const res = await requestSite(url, site, timeout);
@@ -49,6 +61,21 @@ export async function checkSite(
             checkedAt,
           };
         }
+      }
+
+      if (
+        site.responseTimeThresholdMs != null &&
+        responseTimeMs > site.responseTimeThresholdMs
+      ) {
+        return {
+          siteId,
+          url,
+          status: 'degraded',
+          statusCode,
+          responseTimeMs,
+          error: `Tempo de resposta acima do limite (${responseTimeMs}ms > ${site.responseTimeThresholdMs}ms)`,
+          checkedAt,
+        };
       }
 
       if (res.ok) {
