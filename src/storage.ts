@@ -27,7 +27,7 @@ export async function initStorage(): Promise<void> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       site_id INTEGER NOT NULL,
       url TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('up', 'down')),
+      status TEXT NOT NULL CHECK(status IN ('up', 'down', 'degraded')),
       status_code INTEGER,
       response_time_ms INTEGER,
       error TEXT,
@@ -93,7 +93,7 @@ export function getRecentChecks(hours = 24): CheckResult[] {
   if (!db || !storageReady) return [];
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   const stmt = db.exec(
-    `SELECT site_id, url, status, status_code, response_time_ms, error, checked_at
+    `SELECT site_id as siteId, url, status, status_code as statusCode, response_time_ms as responseTimeMs, error, checked_at as checkedAt
      FROM checks WHERE checked_at >= ? ORDER BY checked_at DESC`,
     [since],
   );
@@ -149,6 +149,25 @@ export function getUptimeStats(hours = 24): {
     avgResponseTimeMs:
       get('avgResponseTimeMs') != null ? Number(get('avgResponseTimeMs')) : null,
   };
+}
+
+export function getRecentAlerts(hours = 48): AlertData[] {
+  if (!db || !storageReady) return [];
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const stmt = db.exec(
+    `SELECT type, message, sent_at as sentAt
+     FROM alerts WHERE sent_at >= ? ORDER BY sent_at DESC LIMIT 20`,
+    [since],
+  );
+  if (!stmt.length) return [];
+  const rows = stmt[0];
+  return rows.values.map((row) => {
+    const obj: Record<string, unknown> = {};
+    rows.columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj as unknown as AlertData;
+  });
 }
 
 export function closeDb(): void {
