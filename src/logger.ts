@@ -13,7 +13,11 @@ export function formatLog(entry: LogEntry): string {
 }
 
 export function createLogger(prefix = 'APP') {
-  const write = (level: LogLevel, message: string, context?: Record<string, unknown>): void => {
+  const write = (
+    level: LogLevel,
+    message: string,
+    context?: Record<string, unknown>,
+  ): void => {
     const entry: LogEntry = {
       level,
       message: `${prefix} ${message}`,
@@ -24,8 +28,11 @@ export function createLogger(prefix = 'APP') {
   };
 
   return {
-    info: (message: string, context?: Record<string, unknown>) => write('info', message, context),
-    warn: (message: string, context?: Record<string, unknown>) => write('warn', message, context),
-    error: (message: string, context?: Record<string, unknown>) => write('error', message, context),
+    info: (message: string, context?: Record<string, unknown>) =>
+      write('info', message, context),
+    warn: (message: string, context?: Record<string, unknown>) =>
+      write('warn', message, context),
+    error: (message: string, context?: Record<string, unknown>) =>
+      write('error', message, context),
   };
 }

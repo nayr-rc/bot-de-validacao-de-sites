@@ -102,7 +102,10 @@ export async function sendTelegram(config: AppConfig, text: string): Promise<Ale
         logger.error(`Falha após ${MAX_RETRIES} tentativas`, { error: message });
         return { type: 'down', message: text, sentAt: new Date().toISOString() };
       }
-      logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} falhou. Reenvando...`, { attempt, maxRetries: MAX_RETRIES });
+      logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} falhou. Reenvando...`, {
+        attempt,
+        maxRetries: MAX_RETRIES,
+      });
       await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
     }
   }

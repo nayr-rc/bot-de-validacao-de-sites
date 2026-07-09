@@ -6,6 +6,7 @@ import { checkAllSites } from './checker.js';
 import { parseCliArgs } from './cli.js';
 import { runHealthcheck } from './healthcheck.js';
 import { createLogger } from './logger.js';
+import { startDashboard } from './dashboard.js';
 import {
   sendTelegram,
   buildUpMessage,
@@ -92,7 +93,9 @@ async function tick(): Promise<void> {
     await handleResults(results);
     await sendDailyStats();
   } catch (err) {
-    logger.error('Erro inesperado no tick', { error: err instanceof Error ? err.message : String(err) });
+    logger.error('Erro inesperado no tick', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -109,7 +112,9 @@ function gracefulShutdown(signal: string): void {
   try {
     closeDb();
   } catch (error) {
-    logger.error('Falha ao fechar o banco', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('Falha ao fechar o banco', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   process.exit(0);
 }
@@ -124,13 +129,18 @@ process.on('SIGCONT', () => {
 
 async function main(): Promise<void> {
   await initStorage();
+  startDashboard();
   printStartupSummary();
   logToFile(`MONITOR INICIADO — ${config.sites.map((s) => s.name).join(', ')}`);
   logToFile(`Intervalo: ${config.interval / 60000}min | Timeout: ${config.timeout}ms`);
 
   if (cliOptions.healthcheck) {
     const report = await runHealthcheck(config);
-    logger.info('Healthcheck', { summary: report.summary, sitesDown: report.sitesDown, sitesUp: report.sitesUp });
+    logger.info('Healthcheck', {
+      summary: report.summary,
+      sitesDown: report.sitesDown,
+      sitesUp: report.sitesUp,
+    });
     report.results.forEach((result) => {
       logger.info('Healthcheck site', {
         status: result.status,
@@ -154,7 +164,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  logger.error('Falha fatal na inicialização', { error: err instanceof Error ? err.message : String(err) });
+  logger.error('Falha fatal na inicialização', {
+    error: err instanceof Error ? err.message : String(err),
+  });
   closeDb();
   process.exit(1);
 });
