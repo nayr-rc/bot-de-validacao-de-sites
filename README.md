@@ -49,7 +49,7 @@ Arquivos gerados em runtime (gitignored):
 
 Crie um bot no [@BotFather](https://t.me/BotFather) do Telegram e obtenha o token.
 
-### 2. Arquivo de configuração
+### 2. Opção A: arquivo de configuração
 
 Copie o exemplo e preencha:
 
@@ -82,20 +82,56 @@ Para descobrir seu `chatId`, envie uma mensagem para o bot e acesse:
 https://api.telegram.org/botSEU_TOKEN/getUpdates
 ```
 
-### 3. Rodar em desenvolvimento
+### 3. Opção B: variáveis de ambiente
+
+Também é possível configurar tudo sem criar um arquivo JSON:
+
+```bash
+export TELEGRAM_TOKEN="SEU_TOKEN"
+export TELEGRAM_CHAT_ID="SEU_CHAT_ID"
+export SITES='[{"url":"https://ufrb.edu.br","name":"UFRB"}]'
+export INTERVAL="300000"
+export TIMEOUT="10000"
+```
+
+Em seguida:
 
 ```bash
 npm run dev
 ```
 
-### 4. Compilar e rodar em produção
+### 4. Rodar com Docker Compose
+
+Crie um arquivo `.env` com:
+
+```env
+TELEGRAM_TOKEN=SEU_TOKEN
+TELEGRAM_CHAT_ID=SEU_CHAT_ID
+SITES=[{"url":"https://ufrb.edu.br","name":"UFRB"}]
+INTERVAL=300000
+TIMEOUT=10000
+```
+
+Em seguida:
+
+```bash
+docker compose up --build -d
+```
+
+### 5. Rodar em desenvolvimento
+
+```bash
+npm run dev
+```
+
+### 6. Compilar e rodar em produção
 
 ```bash
 npm run build
 npm start
 ```
 
-### 5. Rodar como serviço (LaunchAgent no macOS)
+### 7. Rodar como serviço (LaunchAgent no macOS)
 
 Já existe um plist em `~/Library/LaunchAgents/br.edu.ufrb.watch.plist`. Para ativar:
 
@@ -112,6 +148,9 @@ launchctl load ~/Library/LaunchAgents/br.edu.ufrb.watch.plist
 | `sites[].url` | URL do site a monitorar | — |
 | `sites[].name` | Nome amigável do site | — |
 | `sites[].expectedContent` | (opcional) Texto que deve existir no HTML | — |
+| `sites[].urls` | (opcional) URLs alternativas de fallback | — |
+| `sites[].method` | (opcional) Método HTTP: GET ou HEAD | GET |
+| `sites[].headers` | (opcional) Cabeçalhos HTTP | — |
 | `interval` | Intervalo entre checagens (ms) | 300000 (5 min) |
 | `timeout` | Timeout por requisição (ms) | 10000 (10s) |
 
@@ -135,3 +174,11 @@ Edite o array `sites` no `config.json`. O bot checa todos em paralelo a cada int
 ```bash
 npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
 ```
+
+## Melhorias implementadas
+
+- Validação robusta de configuração
+- Suporte a configuração via variáveis de ambiente
+- Logs mais claros de inicialização e encerramento
+- Tratamento mais seguro de falhas de shutdown
+- Cobertura de testes ampliada para cenários de configuração

@@ -3,11 +3,15 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
 import { checkAllSites } from './checker.js';
+import { parseCliArgs } from './cli.js';
+import { runHealthcheck } from './healthcheck.js';
+import { createLogger } from './logger.js';
 import {
   sendTelegram,
   buildUpMessage,
   buildDownMessage,
   buildUptimeMessage,
+  shouldSendAlert,
 } from './notifier.js';
 import {
   initStorage,
@@ -24,6 +28,8 @@ const __dirname = dirname(__filename);
 
 const config = loadConfig();
 const state = loadState();
+const cliOptions = parseCliArgs();
+const logger = createLogger('MONITOR');
 let firstRun = true;
 
 let lastStatsSentDay: number | null = null;
@@ -32,7 +38,7 @@ const LOG_PATH = join(__dirname, '..', 'watch.log');
 
 function logToFile(text: string): void {
   const line = `[${new Date().toISOString()}] ${text}\n`;
-  console.log(line.trim());
+  logger.info(text);
   appendFileSync(LOG_PATH, line);
 }
 
@@ -42,16 +48,18 @@ async function handleResults(results: CheckResult[]): Promise<void> {
 
   results.forEach((r) => insertCheck(r));
 
-  if (anyUp && state.wasDown && !firstRun) {
-    const msg = buildUpMessage(results);
-    const alert = await sendTelegram(config, msg);
-    insertAlert(alert);
-    logToFile(`NOTIFICADO — site voltou ao ar`);
-  } else if (allDown && !state.wasDown && !firstRun) {
-    const msg = buildDownMessage(results);
-    const alert = await sendTelegram(config, msg);
-    insertAlert(alert);
-    logToFile(`NOTIFICADO — site ficou fora do ar`);
+  if (!firstRun && shouldSendAlert(state, results)) {
+    if (anyUp && state.wasDown) {
+      const msg = buildUpMessage(results);
+      const alert = await sendTelegram(config, msg);
+      insertAlert(alert);
+      logToFile(`NOTIFICADO — site voltou ao ar`);
+    } else if (allDown && !state.wasDown) {
+      const msg = buildDownMessage(results);
+      const alert = await sendTelegram(config, msg);
+      insertAlert(alert);
+      logToFile(`NOTIFICADO — site ficou fora do ar`);
+    }
   }
 
   state.wasDown = !anyUp;
@@ -84,13 +92,25 @@ async function tick(): Promise<void> {
     await handleResults(results);
     await sendDailyStats();
   } catch (err) {
-    console.error('[TICK] Erro inesperado:', err);
+    logger.error('Erro inesperado no tick', { error: err instanceof Error ? err.message : String(err) });
   }
 }
 
+function printStartupSummary(): void {
+  logger.info('Configuração carregada', {
+    sites: config.sites.length,
+    intervalMinutes: config.interval / 60000,
+    timeoutMs: config.timeout,
+  });
+}
+
 function gracefulShutdown(signal: string): void {
-  console.log(`\n[SINAL] ${signal} — encerrando...`);
-  closeDb();
+  logger.warn(`Sinal recebido: ${signal}`);
+  try {
+    closeDb();
+  } catch (error) {
+    logger.error('Falha ao fechar o banco', { error: error instanceof Error ? error.message : String(error) });
+  }
   process.exit(0);
 }
 
@@ -104,15 +124,37 @@ process.on('SIGCONT', () => {
 
 async function main(): Promise<void> {
   await initStorage();
+  printStartupSummary();
   logToFile(`MONITOR INICIADO — ${config.sites.map((s) => s.name).join(', ')}`);
   logToFile(`Intervalo: ${config.interval / 60000}min | Timeout: ${config.timeout}ms`);
 
+  if (cliOptions.healthcheck) {
+    const report = await runHealthcheck(config);
+    logger.info('Healthcheck', { summary: report.summary, sitesDown: report.sitesDown, sitesUp: report.sitesUp });
+    report.results.forEach((result) => {
+      logger.info('Healthcheck site', {
+        status: result.status,
+        url: result.url,
+        statusCode: result.statusCode,
+        responseTimeMs: result.responseTimeMs,
+      });
+    });
+    closeDb();
+    process.exit(0);
+  }
+
   await tick();
+  if (cliOptions.once) {
+    logger.info('Execução única concluída');
+    closeDb();
+    process.exit(0);
+  }
+
   setInterval(tick, config.interval);
 }
 
 main().catch((err) => {
-  console.error('[FATAL]', err);
+  logger.error('Falha fatal na inicialização', { error: err instanceof Error ? err.message : String(err) });
   closeDb();
   process.exit(1);
 });

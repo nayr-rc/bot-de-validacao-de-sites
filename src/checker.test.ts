@@ -74,6 +74,29 @@ describe('checkSite', () => {
     expect(result.status).toBe('up');
   });
 
+  it('usa a segunda URL quando a primeira falha', async () => {
+    const siteWithFallback: SiteConfig = {
+      url: 'https://primary.example.com',
+      urls: ['https://fallback.example.com'],
+      name: 'Fallback',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('primary down'))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('ok'),
+      });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await checkSite(siteWithFallback, siteId, 5000);
+
+    expect(result.status).toBe('up');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   afterAll(() => {
     restoreFetch();
   });

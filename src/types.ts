@@ -1,7 +1,12 @@
 export interface SiteConfig {
   url: string;
+  urls?: string[];
   name: string;
   expectedContent?: string;
+  interval?: number;
+  timeout?: number;
+  method?: 'GET' | 'HEAD';
+  headers?: Record<string, string>;
 }
 
 export interface TelegramConfig {

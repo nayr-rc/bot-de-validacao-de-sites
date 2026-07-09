@@ -1,0 +1,16 @@
+version: '3.9'
+services:
+  ufrb-watch:
+    build: .
+    container_name: ufrb-watch
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      SITES: ${SITES:-[{"url":"https://ufrb.edu.br","name":"UFRB"}]}
+      INTERVAL: ${INTERVAL:-300000}
+      TIMEOUT: ${TIMEOUT:-10000}
+    volumes:
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+      - ./watch.log:/app/watch.log
+    restart: unless-stopped

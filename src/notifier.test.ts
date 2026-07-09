@@ -50,6 +50,18 @@ describe('buildDownMessage', () => {
     expect(msg).toContain('fora do ar');
     expect(msg).toContain('503');
   });
+
+  it('inclui detalhes de erro e tempo de resposta', () => {
+    const result = makeResult({
+      status: 'down',
+      statusCode: 503,
+      error: 'timeout',
+      responseTimeMs: 8000,
+    });
+    const msg = buildDownMessage([result]);
+    expect(msg).toContain('timeout');
+    expect(msg).toContain('8000ms');
+  });
 });
 
 describe('buildUptimeMessage', () => {

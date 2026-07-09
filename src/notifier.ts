@@ -1,7 +1,33 @@
+import { createLogger } from './logger.js';
 import type { CheckResult, AppConfig, AlertData } from './types.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
+const logger = createLogger('NOTIFIER');
+
+function buildDetails(results: CheckResult[]): string {
+  return results
+    .map((r) => {
+      const statusText = r.status === 'up' ? '✅' : '❌';
+      const statusCode = r.statusCode != null ? `HTTP ${r.statusCode}` : 'erro';
+      const response = r.responseTimeMs != null ? `${r.responseTimeMs}ms` : '?ms';
+      const error = r.error ? ` — ${r.error}` : '';
+      return `${statusText} ${r.url} — ${statusCode} (${response})${error}`;
+    })
+    .join('\n');
+}
+
+export function shouldSendAlert(
+  previousState: { wasDown: boolean },
+  results: CheckResult[],
+): boolean {
+  const anyUp = results.some((r) => r.status === 'up');
+  const allDown = results.every((r) => r.status === 'down');
+
+  if (previousState.wasDown && anyUp) return true;
+  if (!previousState.wasDown && allDown) return true;
+  return false;
+}
 
 function formatTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', {
@@ -13,24 +39,14 @@ function formatTime(iso: string): string {
 
 export function buildUpMessage(results: CheckResult[]): string {
   const time = formatTime(results[0].checkedAt);
-  const details = results
-    .map(
-      (r) =>
-        `${r.status === 'up' ? '✅' : '❌'} ${r.url} — ${r.statusCode ?? 'erro'} (${r.responseTimeMs ?? '?'}ms)`,
-    )
-    .join('\n');
+  const details = buildDetails(results);
 
   return `🟢 *UFRB voltou ao ar!*\n\nO site da UFRB está acessível novamente.\n⏱ ${time}\n\n${details}`;
 }
 
 export function buildDownMessage(results: CheckResult[]): string {
   const time = formatTime(results[0].checkedAt);
-  const details = results
-    .map(
-      (r) =>
-        `${r.status === 'up' ? '✅' : '❌'} ${r.url} — ${r.statusCode ? `HTTP ${r.statusCode}` : r.error} (${r.responseTimeMs ?? '?'}ms)`,
-    )
-    .join('\n');
+  const details = buildDetails(results);
 
   return `🔴 *UFRB fora do ar!*\n\nO site da UFRB não está acessível.\n⏱ ${time}\n\n${details}`;
 }
@@ -83,10 +99,10 @@ export async function sendTelegram(config: AppConfig, text: string): Promise<Ale
     } catch (err) {
       if (attempt === MAX_RETRIES) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[NOTIFIER] Falha após ${MAX_RETRIES} tentativas: ${message}`);
+        logger.error(`Falha após ${MAX_RETRIES} tentativas`, { error: message });
         return { type: 'down', message: text, sentAt: new Date().toISOString() };
       }
-      console.warn(`[NOTIFIER] Tentativa ${attempt}/${MAX_RETRIES} falhou. Reenvando...`);
+      logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} falhou. Reenvando...`, { attempt, maxRetries: MAX_RETRIES });
       await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
     }
   }
